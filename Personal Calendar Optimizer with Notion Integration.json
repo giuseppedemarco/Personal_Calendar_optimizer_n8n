@@ -1,0 +1,1450 @@
+{
+  "name": "Personal Calendar Optimizer with Notion Integration",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "databaseId": {
+          "__rl": true,
+          "value": "https://www.notion.so/2ea2380ef45680b3848fe45932fb70ef?v=2ea2380ef4568003a4b2000c06ec181b&source=copy_link",
+          "mode": "url"
+        }
+      },
+      "id": "ecf72646-4eed-466d-b6cd-49afe218bc91",
+      "name": "Inbox Trigger",
+      "type": "n8n-nodes-base.notionTrigger",
+      "typeVersion": 1,
+      "position": [
+        -5360,
+        1776
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "3b3290f5-44b9-4ca8-a051-cb8f2d648c43",
+      "name": "Daily Plan Trigger (07:30)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -5360,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 21,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "71748919-8f14-474d-b459-6731fddb6cc4",
+      "name": "Evening Reset Trigger (21:30)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -5360,
+        3088
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "options": {}
+      },
+      "id": "e249cc01-577f-4d9c-a70d-121d364fda3c",
+      "name": "Retrieve Inbox Page",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -5136,
+        1776
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.notion.com/v1/databases/{{ $vars.CAL_DB_ID }}/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"filter\": { \"and\": [ { \"property\": \"When\", \"date\": { \"on_or_after\": $('Parse Inbox with Ollama').item.json.date || $now.toFormat('yyyy-MM-dd') } }, { \"property\": \"When\", \"date\": { \"on_or_before\": $('Parse Inbox with Ollama').item.json.date || $now.toFormat('yyyy-MM-dd') } } ] }, \"page_size\": 100 } }}",
+        "options": {}
+      },
+      "id": "939a6d51-a1cb-47bb-bb69-ba9baedfab09",
+      "name": "Query Calendar Events (HTTP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -4336,
+        1776
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ComputeBestSlot Function\n// Finds the best time slot for an event based on calendar availability and scoring logic\n\nconst items = $input.all();\n\n// Parse calendar events from HTTP response\nconst httpResponse = items[0].json;\nconst calendarEvents = httpResponse.results || [];\n\n// Extract parsed event data from Ollama response\nconst ollamaResponse = $('Parse Inbox with Ollama').item.json;\nconst parsedContent = ollamaResponse;\n\nconst duration = parsedContent.duration || 60; // in minutes\nconst priority = parsedContent.priority === 'high' ? 8 : parsedContent.priority === 'medium' ? 5 : 3;\nconst category = parsedContent.type || '';\nconst preferredTime = parsedContent.preferredTime || null;\nconst date = parsedContent.date || new Date().toISOString().split('T')[0];\n\n// Working hours definition\nconst workingHours = {\n  // Monday-Friday (1-5)\n  1: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  2: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  3: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  4: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  5: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  // Saturday-Sunday (6, 0)\n  6: [{ start: '10:00', end: '13:00' }, { start: '17:00', end: '21:00' }],\n  0: [{ start: '10:00', end: '13:00' }, { start: '17:00', end: '21:00' }]\n};\n\n// Helper: Convert time string to minutes since midnight\nfunction timeToMinutes(timeStr) {\n  const [hours, minutes] = timeStr.split(':').map(Number);\n  return hours * 60 + minutes;\n}\n\n// Helper: Convert minutes to time string\nfunction minutesToTime(minutes) {\n  const hours = Math.floor(minutes / 60);\n  const mins = minutes % 60;\n  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;\n}\n\n// Helper: Check if slot overlaps with existing events (including buffers)\nfunction isSlotAvailable(startMin, endMin, events, targetDate) {\n  for (const event of events) {\n    // Parse Notion date property\n    const eventDateProp = event.properties?.When?.date || event.properties?.Date?.date;\n    if (!eventDateProp) continue;\n    \n    const eventStart = new Date(eventDateProp.start);\n    const eventEnd = new Date(eventDateProp.end || eventDateProp.start);\n    const eventDate = eventStart.toISOString().split('T')[0];\n    \n    if (eventDate !== targetDate) continue;\n    \n    // Get buffer values (default to 0 if not present)\n    const bufferBefore = event.properties?.BufferBefore?.number || 0;\n    const bufferAfter = event.properties?.BufferAfter?.number || 0;\n    \n    const eventStartMin = eventStart.getHours() * 60 + eventStart.getMinutes() - bufferBefore;\n    const eventEndMin = eventEnd.getHours() * 60 + eventEnd.getMinutes() + bufferAfter;\n    \n    // Check for overlap\n    if (startMin < eventEndMin && endMin > eventStartMin) {\n      return false;\n    }\n  }\n  return true;\n}\n\n// Helper: Calculate score for a time slot\nfunction calculateScore(startMin, endMin, events, targetDate) {\n  let score = priority * 10; // Base score from priority\n  \n  // +20 for Deep work during 09:00-12:00\n  if (category.toLowerCase().includes('deep work') || category.toLowerCase().includes('focus')) {\n    if (startMin >= timeToMinutes('09:00') && endMin <= timeToMinutes('12:00')) {\n      score += 20;\n    }\n  }\n  \n  // +20 for Health during 18:00-20:30\n  if (category.toLowerCase().includes('health') || category.toLowerCase().includes('exercise')) {\n    if (startMin >= timeToMinutes('18:00') && endMin <= timeToMinutes('20:30')) {\n      score += 20;\n    }\n  }\n  \n  // -30 for avoiding lunch time 12:00-14:30\n  if (startMin < timeToMinutes('14:30') && endMin > timeToMinutes('12:00')) {\n    score -= 30;\n  }\n  \n  // -40 for avoiding late end (>21:30)\n  if (endMin > timeToMinutes('21:30')) {\n    score -= 40;\n  }\n  \n  // -10 for being adjacent to events >90 minutes\n  for (const event of events) {\n    const eventDateProp = event.properties?.When?.date || event.properties?.Date?.date;\n    if (!eventDateProp) continue;\n    \n    const eventStart = new Date(eventDateProp.start);\n    const eventEnd = new Date(eventDateProp.end || eventDateProp.start);\n    const eventDate = eventStart.toISOString().split('T')[0];\n    \n    if (eventDate !== targetDate) continue;\n    \n    const eventStartMin = eventStart.getHours() * 60 + eventStart.getMinutes();\n    const eventEndMin = eventEnd.getHours() * 60 + eventEnd.getMinutes();\n    const eventDuration = eventEndMin - eventStartMin;\n    \n    if (eventDuration > 90) {\n      // Check if adjacent (within 15 minutes)\n      if (Math.abs(startMin - eventEndMin) <= 15 || Math.abs(endMin - eventStartMin) <= 15) {\n        score -= 10;\n      }\n    }\n  }\n  \n  // Calculate free block before and after\n  let freeBlockBefore = startMin;\n  let freeBlockAfter = 1440 - endMin; // Minutes until end of day\n  \n  for (const event of events) {\n    const eventDateProp = event.properties?.When?.date || event.properties?.Date?.date;\n    if (!eventDateProp) continue;\n    \n    const eventStart = new Date(eventDateProp.start);\n    const eventEnd = new Date(eventDateProp.end || eventDateProp.start);\n    const eventDate = eventStart.toISOString().split('T')[0];\n    \n    if (eventDate !== targetDate) continue;\n    \n    const eventStartMin = eventStart.getHours() * 60 + eventStart.getMinutes();\n    const eventEndMin = eventEnd.getHours() * 60 + eventEnd.getMinutes();\n    \n    // Find closest event before\n    if (eventEndMin <= startMin) {\n      freeBlockBefore = Math.min(freeBlockBefore, startMin - eventEndMin);\n    }\n    \n    // Find closest event after\n    if (eventStartMin >= endMin) {\n      freeBlockAfter = Math.min(freeBlockAfter, eventStartMin - endMin);\n    }\n  }\n  \n  const freeBlockMin = Math.min(freeBlockBefore, freeBlockAfter);\n  score += Math.floor(freeBlockMin / 30); // +1 point per 30 minutes of free block\n  \n  return score;\n}\n\n// Get day of week for target date\nconst targetDate = new Date(date);\nconst dayOfWeek = targetDate.getDay();\nconst hours = workingHours[dayOfWeek] || [];\n\n// Generate all possible 15-minute slots\nconst slots = [];\n\nfor (const period of hours) {\n  const periodStart = timeToMinutes(period.start);\n  const periodEnd = timeToMinutes(period.end);\n  \n  // Generate 15-minute slots\n  for (let startMin = periodStart; startMin + duration <= periodEnd; startMin += 15) {\n    const endMin = startMin + duration;\n    \n    // Check if slot is available (considering buffers)\n    if (isSlotAvailable(startMin, endMin, calendarEvents, date)) {\n      const score = calculateScore(startMin, endMin, calendarEvents, date);\n      \n      slots.push({\n        start: `${date}T${minutesToTime(startMin)}:00`,\n        end: `${date}T${minutesToTime(endMin)}:00`,\n        score: score\n      });\n    }\n  }\n}\n\n// Sort slots by score (descending)\nslots.sort((a, b) => b.score - a.score);\n\n// Prepare result with best slot and top 3 alternatives\nconst result = {\n  bestStart: slots.length > 0 ? slots[0].start : null,\n  bestEnd: slots.length > 0 ? slots[0].end : null,\n  score: slots.length > 0 ? slots[0].score : 0,\n  alternatives: slots.slice(1, 4).map(slot => ({\n    start: slot.start,\n    end: slot.end,\n    score: slot.score\n  })),\n  parsed: parsedContent,\n  slotReasoning: slots.length > 0 ? `Best slot scored ${slots[0].score} points based on priority, time preferences, and calendar availability` : 'No available slots found'\n};\n\nreturn [{ json: result }];"
+      },
+      "id": "17c6d260-9b50-4b1a-b9c0-b93fe6608fc2",
+      "name": "ComputeBestSlot Function",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4112,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.bestStart }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "176298cf-70da-445d-a4dc-d165a32d52e1",
+      "name": "Check Slot Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3888,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2ea2380ef456801db73cf30fdfaca556",
+          "mode": "id"
+        },
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "SourceId|rich_text",
+              "type": "rich_text",
+              "condition": "equals",
+              "richTextValue": "={{ $('Inbox Trigger').item.json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3365b0cc-9a89-4b8e-97cc-66b5885d6d07",
+      "name": "Check Idempotency (Query Calendar)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -3664,
+        1968
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $('Check Idempotency (Query Calendar)').all().length }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3d15f9c-b530-4a3f-b86a-f1bd1cacb950",
+      "name": "Check Already Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3440,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $vars.CAL_DB_ID }}"
+        },
+        "title": "={{ $json.parsed.title }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "When|date",
+              "type": "date",
+              "range": true,
+              "dateStart": "={{ $json.bestStart }}",
+              "dateEnd": "={{ $json.bestEnd }}"
+            },
+            {
+              "key": "Type|select",
+              "type": "select",
+              "selectValue": "={{ $json.parsed.type }}"
+            },
+            {
+              "key": "Flex|select",
+              "type": "select",
+              "selectValue": "={{ $json.parsed.flex }}"
+            },
+            {
+              "key": "DurationMin|number",
+              "type": "number",
+              "numberValue": "={{ $json.parsed.durationMin }}"
+            },
+            {
+              "key": "Priority|number",
+              "type": "number",
+              "numberValue": "={{ $json.parsed.priority }}"
+            },
+            {
+              "key": "BufferBefore|number",
+              "type": "number",
+              "numberValue": "={{ $json.parsed.buffers.before }}"
+            },
+            {
+              "key": "BufferAfter|number",
+              "type": "number",
+              "numberValue": "={{ $json.parsed.buffers.after }}"
+            },
+            {
+              "key": "Status|select",
+              "type": "select",
+              "selectValue": "Planned"
+            },
+            {
+              "key": "Constraints|rich_text",
+              "type": "rich_text",
+              "richText": true,
+              "text": {
+                "text": [
+                  {
+                    "text": "={{ 'Slot reasoning: ' + $json.slotReasoning + '\\n\\nAlternatives: ' + JSON.stringify($json.alternatives) }}",
+                    "annotationUi": {}
+                  }
+                ]
+              }
+            },
+            {
+              "key": "SourceId|rich_text",
+              "type": "rich_text",
+              "textContent": "={{ $('Retrieve Inbox Page').item.json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e4fcb733-5e82-4ac2-b663-cef07453604e",
+      "name": "Create Calendar Event",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -3216,
+        1968
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Inbox Trigger').item.json.id }}"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Parsed|checkbox",
+              "type": "checkbox",
+              "checkboxValue": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "42574dab-a6de-4410-a81d-caf220619019",
+      "name": "Update Inbox Parsed Status",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -2992,
+        1968
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('ComputeBestSlot Function').item.json.chatId || '5354771869' }}",
+        "text": "=✅ Event Scheduled Successfully!\n\n📅 **{{ $('ComputeBestSlot Function').item.json.parsed.title }}**\n⏰ Time: {{ new Date($('ComputeBestSlot Function').item.json.bestStart).toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit' }) }} - {{ new Date($('ComputeBestSlot Function').item.json.bestEnd).toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit' }) }}\n⭐ Score: {{ $('ComputeBestSlot Function').item.json.score }}\n\n🔄 Top 3 Alternatives:\n{{ $('ComputeBestSlot Function').item.json.alternatives.map((alt, i) => `${i+1}. ${new Date(alt.start).toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit' })} - ${new Date(alt.end).toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit' })} (Score: ${alt.score})`).join('\n') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "06086ccc-6ea9-4bb6-a9db-653012030ee2",
+      "name": "Notify Telegram Success",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2768,
+        1872
+      ],
+      "webhookId": "a1db28cb-5dc8-4ca1-90fd-1bb29fb6d431",
+      "credentials": {
+        "telegramApi": {
+          "id": "EfHGXod2vd9Taa2r",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2ea2380ef456801db73cf30fdfaca556",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "When|date",
+              "type": "date",
+              "condition": "equals",
+              "date": "={{ $now.setZone('Europe/Rome').startOf('day').toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7c96000e-f49b-46d8-9e76-489681c10223",
+      "name": "Query Today Events (Daily Plan)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -5136,
+        2288
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2ea2380ef456801db73cf30fdfaca556",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Status|select",
+              "type": "select",
+              "condition": "equals",
+              "selectValue": "Planned"
+            },
+            {
+              "key": "Flex|select",
+              "type": "select",
+              "condition": "equals",
+              "selectValue": "Flexible"
+            },
+            {
+              "key": "Deadline|date",
+              "type": "date",
+              "condition": "on_or_before",
+              "date": "={{ $now.plus(72, 'hours').toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c846296f-47d3-410b-942d-1c7e1dd8df02",
+      "name": "Query Pending Tasks (Daily Plan)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -5136,
+        2480
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "686734be-ef90-462f-9be5-9c2884918512",
+      "name": "Merge Daily Plan Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -4912,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// BuildDailyPlan Function\n// Builds a comprehensive daily plan from events and tasks\n\nconst items = $input.all();\n\n// Separate events and tasks from merged data\nconst events = [];\nconst tasks = [];\n\nfor (const item of items) {\n  const json = item.json;\n  \n  // Check if item is an event (has When/Date property) or task\n  if (json.properties && json.properties.When) {\n    events.push(json);\n  } else if (json.properties && json.properties.Status) {\n    tasks.push(json);\n  }\n}\n\n// Sort events by start time\nconst sortedEvents = events.sort((a, b) => {\n  const timeA = a.properties.When?.date?.start || '';\n  const timeB = b.properties.When?.date?.start || '';\n  return timeA.localeCompare(timeB);\n});\n\n// Calculate total Deep Work time\nlet totalDeepWorkMinutes = 0;\n\nfor (const event of sortedEvents) {\n  const eventType = event.properties.Type?.select?.name || '';\n  \n  if (eventType === 'Deep work' || eventType === 'Deep Work' || eventType === 'Focus Block') {\n    const start = event.properties.When?.date?.start;\n    const end = event.properties.When?.date?.end;\n    \n    if (start && end) {\n      const startTime = new Date(start);\n      const endTime = new Date(end);\n      const durationMinutes = (endTime - startTime) / (1000 * 60);\n      totalDeepWorkMinutes += durationMinutes;\n    }\n  }\n}\n\n// Identify top 3 priorities from tasks\nconst priorityTasks = tasks\n  .filter(task => task.properties.Priority?.number)\n  .sort((a, b) => {\n    const priorityA = a.properties.Priority?.number || 0;\n    const priorityB = b.properties.Priority?.number || 0;\n    return priorityB - priorityA; // Higher priority number = more important\n  })\n  .slice(0, 3);\n\nconst top3Priorities = priorityTasks.map((task, index) => {\n  const title = task.properties.Name?.title?.[0]?.plain_text || 'Untitled';\n  const priority = task.properties.Priority?.number || 0;\n  const status = task.properties.Status?.select?.name || 'Unknown';\n  return `${index + 1}. ${title} (Priority: ${priority}, Status: ${status})`;\n}).join('\\n');\n\n// Format agenda\nconst agendaText = sortedEvents.map(event => {\n  const title = event.properties.Name?.title?.[0]?.plain_text || 'Untitled';\n  const start = event.properties.When?.date?.start || '';\n  const end = event.properties.When?.date?.end || '';\n  const type = event.properties.Type?.select?.name || 'Event';\n  \n  // Format time\n  const startTime = start ? new Date(start).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';\n  const endTime = end ? new Date(end).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';\n  \n  return `• ${startTime}-${endTime}: ${title} [${type}]`;\n}).join('\\n');\n\n// Check if Deep Work >= 90 minutes exists\nconst needsFocusBlock = totalDeepWorkMinutes < 90;\n\n// Format total deep work time\nconst hours = Math.floor(totalDeepWorkMinutes / 60);\nconst minutes = totalDeepWorkMinutes % 60;\nconst totalDeepWorkTime = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;\n\n// Build daily plan message\nconst dailyPlanMessage = `📋 **Agenda:**\\n${agendaText || 'No events scheduled'}\\n\\n🎯 **Top 3 Priorities:**\\n${top3Priorities || 'No priority tasks'}\\n\\n⏱️ **Total Deep Work Time:** ${totalDeepWorkTime}`;\n\n// Return structured output\nreturn [\n  {\n    json: {\n      planText: dailyPlanMessage,\n      needsFocusBlock: needsFocusBlock,\n      events: sortedEvents,\n      agenda: agendaText,\n      priorities: top3Priorities,\n      totalDeepWorkTime: totalDeepWorkTime,\n      totalDeepWorkMinutes: totalDeepWorkMinutes,\n      totalEvents: events.length,\n      totalTasks: tasks.length,\n      date: new Date().toISOString().split('T')[0]\n    }\n  }\n];"
+      },
+      "id": "0810f972-a72e-4d1d-91a9-db827248c0bb",
+      "name": "BuildDailyPlan Function",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4688,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $('BuildDailyPlan Function').item.json.needsFocusBlock }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d4b3bae1-041f-4c98-80dd-53005655a66b",
+      "name": "Check Need Focus Block",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -4464,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ComputeBestSlot for Focus Block - 90 minute deep work session\n// Reuses the main ComputeBestSlot logic with specific parameters\n\nconst items = $input.all();\nconst calendarEvents = items[0]?.json?.results || [];\n\n// Configuration for Focus Block\nconst duration = 90; // minutes\nconst priority = 5;\nconst category = 'Deep work';\n\n// Time window: now until 22:30 today (Europe/Rome timezone)\nconst now = new Date();\nconst windowStart = now;\nconst windowEnd = new Date();\nwindowEnd.setHours(22, 30, 0, 0);\n\nconst date = now.toISOString().split('T')[0];\n\n// Working hours definition\nconst workingHours = {\n  1: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  2: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  3: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  4: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  5: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  6: [{ start: '10:00', end: '13:00' }, { start: '17:00', end: '21:00' }],\n  0: [{ start: '10:00', end: '13:00' }, { start: '17:00', end: '21:00' }]\n};\n\n// Helper: Convert time string to minutes since midnight\nfunction timeToMinutes(timeStr) {\n  const [hours, minutes] = timeStr.split(':').map(Number);\n  return hours * 60 + minutes;\n}\n\n// Helper: Convert minutes to time string\nfunction minutesToTime(minutes) {\n  const hours = Math.floor(minutes / 60);\n  const mins = minutes % 60;\n  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;\n}\n\n// Helper: Check if slot overlaps with existing events\nfunction isSlotAvailable(startMin, endMin, events, targetDate) {\n  for (const event of events) {\n    const eventDate = event.properties?.When?.date;\n    if (!eventDate) continue;\n    \n    const eventStart = new Date(eventDate.start);\n    const eventEnd = new Date(eventDate.end || eventDate.start);\n    const eventDateStr = eventStart.toISOString().split('T')[0];\n    \n    if (eventDateStr !== targetDate) continue;\n    \n    const eventStartMin = eventStart.getHours() * 60 + eventStart.getMinutes();\n    const eventEndMin = eventEnd.getHours() * 60 + eventEnd.getMinutes();\n    \n    // Check for overlap\n    if (startMin < eventEndMin && endMin > eventStartMin) {\n      return false;\n    }\n  }\n  return true;\n}\n\n// Helper: Calculate score for a time slot\nfunction calculateScore(startMin, endMin, events, targetDate) {\n  let score = priority * 10; // Base score\n  \n  const startTime = minutesToTime(startMin);\n  const endTime = minutesToTime(endMin);\n  \n  // +20 for Deep work during 09:00-12:00\n  if (category.toLowerCase().includes('deep work') || category.toLowerCase().includes('focus')) {\n    if (startMin >= timeToMinutes('09:00') && endMin <= timeToMinutes('12:00')) {\n      score += 20;\n    }\n  }\n  \n  // -30 for avoiding lunch time 12:00-14:30\n  if (startMin < timeToMinutes('14:30') && endMin > timeToMinutes('12:00')) {\n    score -= 30;\n  }\n  \n  // -40 for avoiding late end (>21:30)\n  if (endMin > timeToMinutes('21:30')) {\n    score -= 40;\n  }\n  \n  // -10 for being adjacent to events >90 minutes\n  for (const event of events) {\n    const eventDate = event.properties?.When?.date;\n    if (!eventDate) continue;\n    \n    const eventStart = new Date(eventDate.start);\n    const eventEnd = new Date(eventDate.end || eventDate.start);\n    const eventDateStr = eventStart.toISOString().split('T')[0];\n    \n    if (eventDateStr !== targetDate) continue;\n    \n    const eventStartMin = eventStart.getHours() * 60 + eventStart.getMinutes();\n    const eventEndMin = eventEnd.getHours() * 60 + eventEnd.getMinutes();\n    const eventDuration = eventEndMin - eventStartMin;\n    \n    if (eventDuration > 90) {\n      // Check if adjacent (within 15 minutes)\n      if (Math.abs(startMin - eventEndMin) <= 15 || Math.abs(endMin - eventStartMin) <= 15) {\n        score -= 10;\n      }\n    }\n  }\n  \n  // Calculate free block before and after\n  let freeBlockBefore = startMin;\n  let freeBlockAfter = 1440 - endMin; // Minutes until end of day\n  \n  for (const event of events) {\n    const eventDate = event.properties?.When?.date;\n    if (!eventDate) continue;\n    \n    const eventStart = new Date(eventDate.start);\n    const eventEnd = new Date(eventDate.end || eventDate.start);\n    const eventDateStr = eventStart.toISOString().split('T')[0];\n    \n    if (eventDateStr !== targetDate) continue;\n    \n    const eventStartMin = eventStart.getHours() * 60 + eventStart.getMinutes();\n    const eventEndMin = eventEnd.getHours() * 60 + eventEnd.getMinutes();\n    \n    // Find closest event before\n    if (eventEndMin <= startMin) {\n      freeBlockBefore = Math.min(freeBlockBefore, startMin - eventEndMin);\n    }\n    \n    // Find closest event after\n    if (eventStartMin >= endMin) {\n      freeBlockAfter = Math.min(freeBlockAfter, eventStartMin - endMin);\n    }\n  }\n  \n  const freeBlockMin = Math.min(freeBlockBefore, freeBlockAfter);\n  score += Math.floor(freeBlockMin / 30);\n  \n  return score;\n}\n\n// Get day of week for target date\nconst targetDate = new Date(date);\nconst dayOfWeek = targetDate.getDay();\nconst hours = workingHours[dayOfWeek] || [];\n\n// Generate all possible 15-minute slots within remaining time today\nconst slots = [];\nconst currentMinutes = now.getHours() * 60 + now.getMinutes();\nconst endMinutes = 22 * 60 + 30; // 22:30\n\nfor (const period of hours) {\n  const periodStart = timeToMinutes(period.start);\n  const periodEnd = timeToMinutes(period.end);\n  \n  // Only consider periods that haven't passed yet\n  if (periodEnd <= currentMinutes) continue;\n  \n  const effectiveStart = Math.max(periodStart, currentMinutes);\n  const effectiveEnd = Math.min(periodEnd, endMinutes);\n  \n  // Generate 15-minute slots\n  for (let startMin = effectiveStart; startMin + duration <= effectiveEnd; startMin += 15) {\n    const endMin = startMin + duration;\n    \n    // Check if slot is available\n    if (isSlotAvailable(startMin, endMin, calendarEvents, date)) {\n      const score = calculateScore(startMin, endMin, calendarEvents, date);\n      \n      slots.push({\n        start: `${date}T${minutesToTime(startMin)}:00`,\n        end: `${date}T${minutesToTime(endMin)}:00`,\n        score: score\n      });\n    }\n  }\n}\n\n// Sort slots by score (descending)\nslots.sort((a, b) => b.score - a.score);\n\n// Prepare result\nif (slots.length > 0) {\n  return [{\n    json: {\n      slotStart: slots[0].start,\n      slotEnd: slots[0].end,\n      score: slots[0].score,\n      found: true,\n      alternatives: slots.slice(1, 4).map(slot => ({\n        start: slot.start,\n        end: slot.end,\n        score: slot.score\n      }))\n    }\n  }];\n} else {\n  return [{\n    json: {\n      slotStart: null,\n      slotEnd: null,\n      score: 0,\n      found: false,\n      reason: 'No available slots found for 90-minute Focus Block today',\n      alternatives: []\n    }\n  }];\n}"
+      },
+      "id": "e6995c1c-8d9c-4dc4-b84a-d77bdc8d5e2d",
+      "name": "ComputeBestSlot for Focus Block",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4240,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "2ea2380ef456801db73cf30fdfaca556",
+          "mode": "id"
+        },
+        "title": "Focus Block",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "When|date",
+              "type": "date",
+              "range": true,
+              "dateStart": "={{ $json.slotStart }}",
+              "dateEnd": "={{ $json.slotEnd }}"
+            },
+            {
+              "key": "Type|select",
+              "type": "select",
+              "selectValue": "Deep work"
+            },
+            {
+              "key": "Flex|select",
+              "type": "select",
+              "selectValue": "Fixed"
+            },
+            {
+              "key": "DurationMin|number",
+              "type": "number",
+              "numberValue": 90
+            },
+            {
+              "key": "Priority|number",
+              "type": "number",
+              "numberValue": 5
+            },
+            {
+              "key": "Status|status",
+              "type": "status",
+              "statusValue": "Planned"
+            },
+            {
+              "key": "BufferBefore|number",
+              "type": "number",
+              "numberValue": 10
+            },
+            {
+              "key": "BufferAfter|number",
+              "type": "number",
+              "numberValue": 10
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "69b7bcf9-f8c6-4f24-9d65-e491c8391c19",
+      "name": "Create Focus Block",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -4016,
+        2320
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "4ed50d8f-a3fd-4f01-8855-52d2836a4255",
+      "name": "Merge Daily Plan Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -3792,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "5354771869",
+        "text": "=🌅 **Daily Plan for {{ $now.setZone('Europe/Rome').toFormat('MMMM d, yyyy') }}**\n\n📋 **Agenda:**\n{{ $('BuildDailyPlan Function').item.json.agenda || 'No events scheduled' }}\n\n🎯 **Top 3 Priorities:**\n{{ $('BuildDailyPlan Function').item.json.priorities || 'No priority tasks' }}\n\n⏱️ **Total Deep Work Time:** {{ $('BuildDailyPlan Function').item.json.totalDeepWorkTime }}\n\n{{ $('BuildDailyPlan Function').item.json.needsFocusBlock ? '🔥 **Focus Block Needed:** Less than 90 minutes of deep work scheduled' : '' }}\n\nHave a productive day! 💪",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "a3a3aa8d-1e2a-428b-a52a-322f566014f1",
+      "name": "Send Daily Plan Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -3568,
+        2288
+      ],
+      "webhookId": "ca78484a-ae47-4d28-8df6-796c8b2f0ac1",
+      "credentials": {
+        "telegramApi": {
+          "id": "EfHGXod2vd9Taa2r",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2ea2380ef456801db73cf30fdfaca556",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "key": "When|date",
+              "type": "date",
+              "condition": "equals",
+              "date": "={{ $now.toFormat('yyyy-MM-dd') }}"
+            },
+            {
+              "key": "Status|select",
+              "type": "select",
+              "condition": "equals",
+              "selectValue": "Planned"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "eb0bc862-b72e-41a3-83e0-560bfe14caf2",
+      "name": "Query Today Planned Events (Evening)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -5136,
+        3088
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "f059744e-cb6b-4b79-b197-d3e2d51d7c14",
+      "name": "Loop Over Planned Events",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -4912,
+        3088
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $('Loop Over Planned Events').item.json.Flex }}",
+              "rightValue": "Flexible",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "da1c18b2-a513-4938-8033-c60d4818a207",
+      "name": "Check Flexible or Fixed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -4688,
+        2800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.notion.com/v1/databases/' + $vars.CAL_DB_ID + '/query' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"filter\": {\n    \"and\": [\n      {\n        \"property\": \"Date\",\n        \"date\": {\n          \"on_or_after\": new Date().toISOString().split('T')[0]\n        }\n      },\n      {\n        \"property\": \"Date\",\n        \"date\": {\n          \"on_or_before\": new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]\n        }\n      }\n    ]\n  },\n  \"page_size\": 100\n} }}",
+        "options": {}
+      },
+      "id": "d82904e2-29b7-418d-9ad6-e8882f905d3f",
+      "name": "Query Calendar for Reschedule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -4464,
+        2704
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ComputeBestSlot for Reschedule\n// Finds the best available time slot for rescheduling an event\n\nconst items = $input.all();\nconst results = [];\n\n// Get the current event from Loop Over Planned Events\nconst currentEvent = $('Loop Over Planned Events').item.json;\n\n// Get calendar events from HTTP response\nconst calendarResponse = $('Query Calendar for Reschedule').item.json;\nconst calendarEvents = calendarResponse.results || [];\n\n// Extract event properties\nconst eventTitle = currentEvent.properties?.Name?.title?.[0]?.plain_text || 'Untitled';\nconst durationMin = currentEvent.properties?.DurationMin?.number || 60;\nconst priority = currentEvent.properties?.Priority?.number || 5;\nconst category = currentEvent.properties?.Type?.select?.name || '';\nconst deadline = currentEvent.properties?.Deadline?.date?.start || null;\n\n// Set window: tomorrow to 3 days from now (or deadline if sooner)\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\ntomorrow.setHours(0, 0, 0, 0);\n\nconst threeDaysOut = new Date();\nthreeDaysOut.setDate(threeDaysOut.getDate() + 3);\nthreeDaysOut.setHours(23, 59, 59, 999);\n\nconst windowStart = tomorrow;\nconst windowEnd = deadline && new Date(deadline) < threeDaysOut ? new Date(deadline) : threeDaysOut;\n\n// Helper: Convert time string to minutes since midnight\nfunction timeToMinutes(timeStr) {\n  const [hours, minutes] = timeStr.split(':').map(Number);\n  return hours * 60 + minutes;\n}\n\n// Helper: Convert minutes to time string\nfunction minutesToTime(minutes) {\n  const hours = Math.floor(minutes / 60);\n  const mins = minutes % 60;\n  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;\n}\n\n// Helper: Check if slot overlaps with existing events\nfunction isSlotAvailable(startMin, endMin, events, targetDate) {\n  for (const event of events) {\n    const eventStart = event.properties?.When?.date?.start;\n    const eventEnd = event.properties?.When?.date?.end;\n    \n    if (!eventStart || !eventEnd) continue;\n    \n    const eventStartDate = new Date(eventStart);\n    const eventDate = eventStartDate.toISOString().split('T')[0];\n    \n    if (eventDate !== targetDate) continue;\n    \n    const eventStartMin = eventStartDate.getHours() * 60 + eventStartDate.getMinutes();\n    const eventEndDate = new Date(eventEnd);\n    const eventEndMin = eventEndDate.getHours() * 60 + eventEndDate.getMinutes();\n    \n    // Check for overlap\n    if (startMin < eventEndMin && endMin > eventStartMin) {\n      return false;\n    }\n  }\n  return true;\n}\n\n// Helper: Calculate score for a time slot\nfunction calculateScore(startMin, endMin, events, targetDate) {\n  let score = priority * 10; // Base score\n  \n  const startTime = minutesToTime(startMin);\n  const endTime = minutesToTime(endMin);\n  \n  // +20 for Deep work during 09:00-12:00\n  if (category.toLowerCase().includes('deep work') || category.toLowerCase().includes('focus')) {\n    if (startMin >= timeToMinutes('09:00') && endMin <= timeToMinutes('12:00')) {\n      score += 20;\n    }\n  }\n  \n  // +20 for Health during 18:00-20:30\n  if (category.toLowerCase().includes('health') || category.toLowerCase().includes('exercise')) {\n    if (startMin >= timeToMinutes('18:00') && endMin <= timeToMinutes('20:30')) {\n      score += 20;\n    }\n  }\n  \n  // -30 for avoiding lunch time 12:00-14:30\n  if (startMin < timeToMinutes('14:30') && endMin > timeToMinutes('12:00')) {\n    score -= 30;\n  }\n  \n  // -40 for avoiding late end (>21:30)\n  if (endMin > timeToMinutes('21:30')) {\n    score -= 40;\n  }\n  \n  // Calculate free block before and after\n  let freeBlockBefore = startMin;\n  let freeBlockAfter = 1440 - endMin;\n  \n  for (const event of events) {\n    const eventStart = event.properties?.When?.date?.start;\n    const eventEnd = event.properties?.When?.date?.end;\n    \n    if (!eventStart || !eventEnd) continue;\n    \n    const eventStartDate = new Date(eventStart);\n    const eventDate = eventStartDate.toISOString().split('T')[0];\n    \n    if (eventDate !== targetDate) continue;\n    \n    const eventStartMin = eventStartDate.getHours() * 60 + eventStartDate.getMinutes();\n    const eventEndDate = new Date(eventEnd);\n    const eventEndMin = eventEndDate.getHours() * 60 + eventEndDate.getMinutes();\n    \n    if (eventEndMin <= startMin) {\n      freeBlockBefore = Math.min(freeBlockBefore, startMin - eventEndMin);\n    }\n    \n    if (eventStartMin >= endMin) {\n      freeBlockAfter = Math.min(freeBlockAfter, eventStartMin - endMin);\n    }\n  }\n  \n  const freeBlockMin = Math.min(freeBlockBefore, freeBlockAfter);\n  score += Math.floor(freeBlockMin / 30);\n  \n  return score;\n}\n\n// Working hours definition\nconst workingHours = {\n  1: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  2: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  3: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  4: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  5: [{ start: '07:30', end: '09:00' }, { start: '12:30', end: '14:00' }, { start: '18:00', end: '22:30' }],\n  6: [{ start: '10:00', end: '13:00' }, { start: '17:00', end: '21:00' }],\n  0: [{ start: '10:00', end: '13:00' }, { start: '17:00', end: '21:00' }]\n};\n\n// Generate all possible slots across the window\nconst allSlots = [];\nlet currentDate = new Date(windowStart);\n\nwhile (currentDate <= windowEnd) {\n  const dateStr = currentDate.toISOString().split('T')[0];\n  const dayOfWeek = currentDate.getDay();\n  const hours = workingHours[dayOfWeek] || [];\n  \n  for (const period of hours) {\n    const periodStart = timeToMinutes(period.start);\n    const periodEnd = timeToMinutes(period.end);\n    \n    // Generate 15-minute slots\n    for (let startMin = periodStart; startMin + durationMin <= periodEnd; startMin += 15) {\n      const endMin = startMin + durationMin;\n      \n      // Check if slot is available\n      if (isSlotAvailable(startMin, endMin, calendarEvents, dateStr)) {\n        const score = calculateScore(startMin, endMin, calendarEvents, dateStr);\n        \n        allSlots.push({\n          start: `${dateStr}T${minutesToTime(startMin)}:00`,\n          end: `${dateStr}T${minutesToTime(endMin)}:00`,\n          score: score\n        });\n      }\n    }\n  }\n  \n  // Move to next day\n  currentDate.setDate(currentDate.getDate() + 1);\n}\n\n// Sort slots by score (descending)\nallSlots.sort((a, b) => b.score - a.score);\n\n// Prepare result\nconst result = {\n  id: currentEvent.id,\n  title: eventTitle,\n  bestStart: allSlots.length > 0 ? allSlots[0].start : null,\n  bestEnd: allSlots.length > 0 ? allSlots[0].end : null,\n  score: allSlots.length > 0 ? allSlots[0].score : 0,\n  alternatives: allSlots.slice(1, 4).map(slot => ({\n    start: slot.start,\n    end: slot.end,\n    score: slot.score\n  })),\n  windowStart: windowStart.toISOString(),\n  windowEnd: windowEnd.toISOString()\n};\n\nreturn [{ json: result }];"
+      },
+      "id": "ef79911b-f7f5-4a07-8f2a-54968c034cfc",
+      "name": "ComputeBestSlot for Reschedule",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4240,
+        2704
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "When",
+              "type": "date",
+              "range": true,
+              "dateStart": "={{ $json.bestStart }}",
+              "dateEnd": "={{ $json.bestEnd }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c98d37dd-1b7b-4c44-999c-a732e3ce6123",
+      "name": "Update Rescheduled Event",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -4016,
+        2704
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Status|status",
+              "selectValue": "Skipped"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "82594b27-1e67-42b4-a259-bc015964a576",
+      "name": "Mark Fixed Event Skipped",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -4016,
+        2992
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "F1VH1JyyNgLoshVi",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "56a3504d-56d7-4c30-ab0a-b6b678ec897f",
+      "name": "Merge Reschedule Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -3792,
+        2992
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "5354771869",
+        "text": "=🌙 **Evening Summary**\n\n{{ $('Loop Over Planned Events').item.json.summary || 'Your daily review is complete.' }}\n\n📅 **Rescheduled Events:**\n{{ $('Update Rescheduled Event').all().map(item => `• ${item.json.title || 'Event'} - moved to ${new Date(item.json.bestStart).toLocaleDateString('it-IT')}`).join('\\n') || 'None' }}\n\n⏭️ **Skipped Fixed Events:**\n{{ $('Mark Fixed Event Skipped').all().map(item => `• ${$('Loop Over Planned Events').item.json.Name || 'Event'}`).join('\\n') || 'None' }}\n\nSee you tomorrow! 💪",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "1f1650b0-94e0-46c5-9892-4e41fb0b301e",
+      "name": "Send Evening Summary Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -4688,
+        2992
+      ],
+      "webhookId": "e6d94d80-40ce-417e-920b-93c9e5ad9ed3",
+      "credentials": {
+        "telegramApi": {
+          "id": "EfHGXod2vd9Taa2r",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "5354771869",
+        "text": "=⚠️ Error in Calendar Optimizer\n\nNode: {{ $json.nodeName || 'Unknown' }}\nError: {{ $json.errorMessage || 'No error details available' }}\n\nPage ID: {{ $('Retrieve Inbox Page').item.json.id || 'N/A' }}\nPage Title: {{ $('Retrieve Inbox Page').item.json.property_name || 'N/A' }}",
+        "additionalFields": {}
+      },
+      "id": "8e927ec3-6979-4201-b469-255ce8e608e3",
+      "name": "Error Notification Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -3440,
+        1584
+      ],
+      "webhookId": "c700d5b2-f51e-4909-b35a-7a27e73d14e5",
+      "credentials": {
+        "telegramApi": {
+          "id": "EfHGXod2vd9Taa2r",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Extract title from Notion page and prepare OpenAI API request\nconst inboxPage = $input.item.json;\nconst title = inboxPage.properties?.Name?.title?.[0]?.plain_text || '';\n\n// System prompt for parsing calendar events\nconst systemPrompt = `You are a calendar event parser. Extract structured information from natural language event descriptions.\n\nExtract the following fields:\n- title: Event title (string)\n- duration: Duration in minutes (number, default 60)\n- priority: Priority level 1-10 (number, default 5)\n- type: Event type - \"Deep work\", \"Meeting\", \"Health\", \"Personal\", etc. (string)\n- flex: \"Flexible\" or \"Fixed\" (string, default \"Flexible\")\n- preferredTime: Preferred time if mentioned in HH:MM format (string or null)\n- date: Target date in YYYY-MM-DD format (string or null, default to today if not specified)\n- buffers: Object with \"before\" and \"after\" in minutes (default {\"before\": 10, \"after\": 10})\n\nReturn ONLY valid JSON with these exact fields.`;\n\n// User message with the title text\nconst userMessage = `Parse this event: \"${title}\"`;\n\n// Return formatted object for OpenAI HTTP request\nreturn {\n  json: {\n    systemPrompt: systemPrompt,\n    userMessage: userMessage,\n    title: title,\n    originalPage: inboxPage\n  }\n};"
+      },
+      "id": "2717866c-6f18-4fe2-9abe-baecd2035762",
+      "name": "AI Parse Inbox Text (Code)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4912,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "errorType",
+              "value": "No slot found",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "pageId",
+              "value": "={{ $('Retrieve Inbox Page').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "pageTitle",
+              "value": "={{ $('Retrieve Inbox Page').item.json.property_name }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "message",
+              "value": "Unable to find suitable time slot for this event",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "614031da-8cce-4f5f-9101-8cb096add07b",
+      "name": "Format Error Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3664,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "e1ddaedb-4bf1-4b28-b280-e888a331ad06",
+      "name": "Ollama Chat Model (Local)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -4688,
+        2000
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "XXZlctTTtr0YdECk",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"title\": {\n      \"type\": \"string\"\n    },\n    \"duration\": {\n      \"type\": \"number\"\n    },\n    \"priority\": {\n      \"type\": \"number\"\n    },\n    \"type\": {\n      \"type\": \"string\"\n    },\n    \"flex\": {\n      \"type\": \"string\"\n    },\n    \"preferredTime\": {\n      \"type\": \"string\"\n    },\n    \"date\": {\n      \"type\": \"string\"\n    },\n    \"buffers\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"before\": {\n          \"type\": \"number\"\n        },\n        \"after\": {\n          \"type\": \"number\"\n        }\n      }\n    }\n  },\n  \"required\": [\"title\"]\n}"
+      },
+      "id": "374af8ba-fe02-40a7-a629-ebd122b59d0e",
+      "name": "Parse Event JSON",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -4560,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('AI Parse Inbox Text (Code)').item.json.systemPrompt + '\\n\\n' + $('AI Parse Inbox Text (Code)').item.json.userMessage }}",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "id": "88b7aa43-58c7-4daa-a687-8490fce3cdbc",
+      "name": "Parse Inbox with Ollama",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -4688,
+        1776
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Inbox Trigger": {
+      "main": [
+        [
+          {
+            "node": "Retrieve Inbox Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve Inbox Page": {
+      "main": [
+        [
+          {
+            "node": "AI Parse Inbox Text (Code)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Calendar Events (HTTP)": {
+      "main": [
+        [
+          {
+            "node": "ComputeBestSlot Function",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ComputeBestSlot Function": {
+      "main": [
+        [
+          {
+            "node": "Check Slot Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Slot Found": {
+      "main": [
+        [
+          {
+            "node": "Check Idempotency (Query Calendar)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Error Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Idempotency (Query Calendar)": {
+      "main": [
+        [
+          {
+            "node": "Check Already Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Already Exists": {
+      "main": [
+        [
+          {
+            "node": "Create Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Update Inbox Parsed Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Inbox Parsed Status": {
+      "main": [
+        [
+          {
+            "node": "Notify Telegram Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Plan Trigger (07:30)": {
+      "main": [
+        [
+          {
+            "node": "Query Today Events (Daily Plan)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query Pending Tasks (Daily Plan)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Today Events (Daily Plan)": {
+      "main": [
+        [
+          {
+            "node": "Merge Daily Plan Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Pending Tasks (Daily Plan)": {
+      "main": [
+        [
+          {
+            "node": "Merge Daily Plan Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Daily Plan Data": {
+      "main": [
+        [
+          {
+            "node": "BuildDailyPlan Function",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BuildDailyPlan Function": {
+      "main": [
+        [
+          {
+            "node": "Check Need Focus Block",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Need Focus Block": {
+      "main": [
+        [
+          {
+            "node": "ComputeBestSlot for Focus Block",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Daily Plan Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "ComputeBestSlot for Focus Block": {
+      "main": [
+        [
+          {
+            "node": "Create Focus Block",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Focus Block": {
+      "main": [
+        [
+          {
+            "node": "Merge Daily Plan Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Daily Plan Paths": {
+      "main": [
+        [
+          {
+            "node": "Send Daily Plan Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evening Reset Trigger (21:30)": {
+      "main": [
+        [
+          {
+            "node": "Query Today Planned Events (Evening)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Today Planned Events (Evening)": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Planned Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Planned Events": {
+      "main": [
+        [
+          {
+            "node": "Send Evening Summary Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Flexible or Fixed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Flexible or Fixed": {
+      "main": [
+        [
+          {
+            "node": "Query Calendar for Reschedule",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Fixed Event Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Calendar for Reschedule": {
+      "main": [
+        [
+          {
+            "node": "ComputeBestSlot for Reschedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ComputeBestSlot for Reschedule": {
+      "main": [
+        [
+          {
+            "node": "Update Rescheduled Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Rescheduled Event": {
+      "main": [
+        [
+          {
+            "node": "Merge Reschedule Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Fixed Event Skipped": {
+      "main": [
+        [
+          {
+            "node": "Merge Reschedule Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Reschedule Paths": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Planned Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Parse Inbox Text (Code)": {
+      "main": [
+        [
+          {
+            "node": "Parse Inbox with Ollama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Message": {
+      "main": [
+        [
+          {
+            "node": "Error Notification Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model (Local)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Parse Inbox with Ollama",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Event JSON": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Parse Inbox with Ollama",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Inbox with Ollama": {
+      "main": [
+        [
+          {
+            "node": "Query Calendar Events (HTTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "fb369b4c-3dbe-41c9-8aae-01a9a59cabaf",
+  "meta": {
+    "instanceId": "923e41a3e21365e50a72fd4554c0c5754754be9272a476b8b63bea0a37328c8e"
+  },
+  "id": "73xb4IorTGWzjktesOHs0",
+  "tags": []
+}
